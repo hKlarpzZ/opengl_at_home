@@ -37,11 +37,11 @@ Vec3f light_dir(0, 0, -1);
 //    }
 //}
 
-void triangle(Vec3i t0, Vec3i t1, Vec3i t2, TGAImage& image, TGAColor color, int* zbuffer) {
+void triangle(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i uv0, Vec2i uv1, Vec2i uv2, TGAImage& image, float intensity, int* zbuffer) {
     if (t0.y == t1.y && t0.y == t2.y) return; // i dont care about degenerate triangles
-    if (t0.y > t1.y) std::swap(t0, t1);
-    if (t0.y > t2.y) std::swap(t0, t2);
-    if (t1.y > t2.y) std::swap(t1, t2);
+    if (t0.y > t1.y) { std::swap(t0, t1); std::swap(uv0, uv1); }
+    if (t0.y > t2.y) { std::swap(t0, t2); std::swap(uv0, uv2); }
+    if (t1.y > t2.y) { std::swap(t1, t2); std::swap(uv1, uv2); }
     int total_height = t2.y - t0.y;
     for (int i = 0; i < total_height; i++) {
         bool second_half = i > t1.y - t0.y || t1.y == t0.y;
@@ -67,15 +67,24 @@ void triangle(Vec3i t0, Vec3i t1, Vec3i t2, TGAImage& image, TGAColor color, int
         Vec3f A = Vec3f(t0.x, t0.y, t0.z) + Vec3f((t2 - t0).x, (t2 - t0).y, (t2 - t0).z) * alpha;
         Vec3f B = second_half ? Vec3f(t1.x, t1.y, t1.z) + Vec3f((t2 - t1).x, (t2 - t1).y, (t2 - t1).z) * beta : Vec3f(t0.x, t0.y, t0.z) + Vec3f((t1 - t0).x, (t1 - t0).y, (t1 - t0).z) * beta;
 
+        Vec2f uvA = Vec2f(uv0.x, uv0.y) + Vec2f((uv2.x - uv0.x), (uv2.y - uv0.y)) * alpha;
+        Vec2f uvB = second_half ? Vec2f(uv1.x, uv1.y) + Vec2f((uv2.x - uv1.x), (uv2.y - uv1.y)) * beta : Vec2f(uv0.x, uv0.y) + Vec2f((uv1.x - uv0.x), (uv1.y - uv0.y)) * beta;
+
         if (A.x > B.x) std::swap(A, B);
         for (int j = A.x; j <= B.x; j++) {
             float phi = B.x == A.x ? 1. : (float)(j - A.x) / (float)(B.x - A.x);
-            Vec3f Pshit = Vec3f(A.x, A.y, A.z) + Vec3f((B.x - A.x), (B.y - A.y), (B.z - A.z)) * phi;
+
+            Vec3f Pshit = Vec3f(A.x, A.y, A.z) + Vec3f((B.x - A.x), (B.y - A.y), (B.z - A.z)) * phi; //Pshit = A + B * phi; 
             Vec3i P(Pshit.x, Pshit.y, Pshit.z);
+
+            Vec2f uvPshit = Vec2f(uvA.x, uvA.y) + Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi;
+            Vec2i uvP(uvPshit.x, uvPshit.y);
+
             int idx = P.x + P.y * width;
             if (zbuffer[idx] < P.z) {
                 zbuffer[idx] = P.z;
-                image.set(P.x, P.y, color);
+                TGAColor color = model->diffuse(uvP);
+                image.set(P.x, P.y, TGAColor(color.r * intensity, color.g * intensity, color.b * intensity, 1));
             }
         }
     }
@@ -112,7 +121,11 @@ int main(int argc, char** argv) {
         float intensity = n * light_dir;
 
         if (intensity > 0) {
-            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255), zbuffer);
+            Vec2i uv[3];
+            for (int k = 0; k < 3; k++) {
+                uv[k] = model->uv(i, k);
+            }
+            triangle(screen_coords[0], screen_coords[1], screen_coords[2], uv[0], uv[1], uv[2], image, intensity, zbuffer);
         }
     }
 
