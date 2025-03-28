@@ -1,0 +1,134 @@
+#include <vector>
+#include <cmath>
+#include "tgaimage.h"
+#include "model.h"
+#include "geometry.h"
+
+const TGAColor white = TGAColor(255, 255, 255, 255);
+const TGAColor red   = TGAColor(255, 0,   0,   255);
+Model *model = NULL;
+const int width  = 800;
+const int height = 800;
+const int depth = 255;
+int* zbuffer = NULL;
+Vec3f light_dir(0, 0, -1);
+
+
+//void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
+//    bool steep = false;
+//    if (std::abs(x0-x1)<std::abs(y0-y1)) {
+//        std::swap(x0, y0);
+//        std::swap(x1, y1);
+//        steep = true;
+//    }
+//    if (x0>x1) {
+//        std::swap(x0, x1);
+//        std::swap(y0, y1);
+//    }
+//
+//    for (int x=x0; x<=x1; x++) {
+//        float t = (x-x0)/(float)(x1-x0);
+//        int y = y0*(1.-t) + y1*t;
+//        if (steep) {
+//            image.set(y, x, color);
+//        } else {
+//            image.set(x, y, color);
+//        }
+//    }
+//}
+
+void triangle(Vec3i t0, Vec3i t1, Vec3i t2, TGAImage& image, TGAColor color, int* zbuffer) {
+    if (t0.y == t1.y && t0.y == t2.y) return; // i dont care about degenerate triangles
+    if (t0.y > t1.y) std::swap(t0, t1);
+    if (t0.y > t2.y) std::swap(t0, t2);
+    if (t1.y > t2.y) std::swap(t1, t2);
+    int total_height = t2.y - t0.y;
+    for (int i = 0; i < total_height; i++) {
+        bool second_half = i > t1.y - t0.y || t1.y == t0.y;
+        int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
+        float alpha = (float)i / total_height;
+        float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height; // be careful: with above conditions no division by zero here
+        
+        /*Vec3f DA((float)(t2.x - t0.x) * alpha, (float)(t2.y - t0.y) * alpha, (float)(t2.z - t0.z) * alpha);
+        Vec3i A = t0 + Vec3i(DA.x, DA.y, DA.z);
+
+        Vec3f DB;
+        if (second_half)
+        {
+            DB = Vec3f((float)(t2.x - t1.x) * beta, (float)(t2.y - t1.y) * beta, (float)(t2.z - t1.z) * beta);
+        }
+        else
+        {
+            DB = Vec3f((float)(t1.x - t0.x) * beta, (float)(t1.y - t0.y) * beta, (float)(t1.z - t0.z) * beta);
+        }
+        Vec3i DBi(DB.x, DB.y, DB.z);
+        Vec3i B = second_half ? t1 + DBi : t0 + DBi;*/
+
+        Vec3f A = Vec3f(t0.x, t0.y, t0.z) + Vec3f((t2 - t0).x, (t2 - t0).y, (t2 - t0).z) * alpha;
+        Vec3f B = second_half ? Vec3f(t1.x, t1.y, t1.z) + Vec3f((t2 - t1).x, (t2 - t1).y, (t2 - t1).z) * beta : Vec3f(t0.x, t0.y, t0.z) + Vec3f((t1 - t0).x, (t1 - t0).y, (t1 - t0).z) * beta;
+
+        if (A.x > B.x) std::swap(A, B);
+        for (int j = A.x; j <= B.x; j++) {
+            float phi = B.x == A.x ? 1. : (float)(j - A.x) / (float)(B.x - A.x);
+            Vec3f Pshit = Vec3f(A.x, A.y, A.z) + Vec3f((B.x - A.x), (B.y - A.y), (B.z - A.z)) * phi;
+            Vec3i P(Pshit.x, Pshit.y, Pshit.z);
+            int idx = P.x + P.y * width;
+            if (zbuffer[idx] < P.z) {
+                zbuffer[idx] = P.z;
+                image.set(P.x, P.y, color);
+            }
+        }
+    }
+}
+
+
+
+int main(int argc, char** argv) {
+    if (2==argc) {
+        model = new Model(argv[1]);
+    } else {
+        model = new Model("obj/african_head.obj");
+    }
+
+    zbuffer = new int[width * height];
+    for (int i = 0; i < width * height; i++) {
+        zbuffer[i] = std::numeric_limits<int>::min();
+    }
+
+    TGAImage image(width, height, TGAImage::RGB);
+    for (int i = 0; i < model->nfaces(); i++) {
+        std::vector<int> face = model->face(i);
+        Vec3i screen_coords[3];
+        Vec3f world_coords[3];
+
+        for (int j = 0; j < 3; j++) {
+            Vec3f v = model->vert(face[j]);
+            screen_coords[j] = Vec3i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2., (v.z + 1.) * depth / 2.);
+            world_coords[j] = v;
+        }
+
+        Vec3f n = (world_coords[2] - world_coords[0]) ^ (world_coords[1] - world_coords[0]);
+        n.normalize();
+        float intensity = n * light_dir;
+
+        if (intensity > 0) {
+            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255), zbuffer);
+        }
+    }
+
+    TGAImage zbuffer_image(width, height, TGAImage::RGB);
+    for (int i = 0; i < width * height; i++)
+    {
+        int a = zbuffer[i] == std::numeric_limits<int>::min() ? 0 : zbuffer[i];
+        zbuffer_image.set(i % width, i / width, TGAColor(255 * a, 255 * a, 255 * a, 255));
+    }
+
+    image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    image.write_tga_file("output.tga");
+
+    zbuffer_image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    zbuffer_image.write_tga_file("zbuffer_image_output.tga");
+    delete model;
+    return 0;
+}
+
