@@ -130,9 +130,11 @@
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="model.cpp" />
     <ClCompile Include="newmain.cpp" />
+    <ClCompile Include="custommath.cpp" />
     <ClCompile Include="tgaimage.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="custommath.h" />
     <ClInclude Include="geometry.h" />
     <ClInclude Include="model.h" />
     <ClInclude Include="tgaimage.h" />

@@ -3,6 +3,32 @@
 #include "tgaimage.h"
 #include "model.h"
 #include "geometry.h"
+#include "custommath.h"
+
+class Camera
+{
+public:
+    Camera(Vec3f coordinates);
+    ~Camera();
+    Vec3f GetPosition();
+
+private:
+    Vec3f coords;
+};
+
+Camera::Camera(Vec3f coordinates)
+{
+    this->coords = coordinates;
+}
+
+Camera::~Camera()
+{
+}
+
+Vec3f Camera::GetPosition()
+{
+    return coords;
+}
 
 const TGAColor white = TGAColor(255, 255, 255, 255);
 const TGAColor red   = TGAColor(255, 0,   0,   255);
@@ -11,7 +37,22 @@ const int width  = 800;
 const int height = 800;
 const int depth = 255;
 int* zbuffer = NULL;
+
 Vec3f light_dir(0, 0, -1);
+Camera camera(Vec3f(0, 0, 3));
+
+
+Matrix viewport(int x, int y, int w, int h) {
+    Matrix m = Matrix::identity(4);
+    m[0][3] = x + w / 2.f;
+    m[1][3] = y + h / 2.f;
+    m[2][3] = depth / 2.f;
+
+    m[0][0] = w / 2.f;
+    m[1][1] = h / 2.f;
+    m[2][2] = depth / 2.f;
+    return m;
+}
 
 
 //void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
@@ -104,6 +145,12 @@ int main(int argc, char** argv) {
         zbuffer[i] = std::numeric_limits<int>::min();
     }
 
+
+    Matrix Projection = Matrix::identity(4);
+    Matrix ViewPort = viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
+    Projection[3][2] = -1.f / camera.GetPosition().z;
+
+
     TGAImage image(width, height, TGAImage::RGB);
     for (int i = 0; i < model->nfaces(); i++) {
         std::vector<int> face = model->face(i);
@@ -112,7 +159,8 @@ int main(int argc, char** argv) {
 
         for (int j = 0; j < 3; j++) {
             Vec3f v = model->vert(face[j]);
-            screen_coords[j] = Vec3i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2., (v.z + 1.) * depth / 2.);
+            Vec3f sup = Matrix::mat2vec(ViewPort * Projection * Matrix::vec2mat(v));
+            screen_coords[j] = Vec3i(sup.x, sup.y, sup.z); //Vec3i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2., (v.z + 1.) * depth / 2.);
             world_coords[j] = v;
         }
 
