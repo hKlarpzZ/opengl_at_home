@@ -40,6 +40,8 @@ int* zbuffer = NULL;
 
 Vec3f light_dir(0, 0, -1);
 Camera camera(Vec3f(0, 0, 3));
+Vec3f eye(1, 1, 3);
+Vec3f center(0, 0, 0);
 
 
 Matrix viewport(int x, int y, int w, int h) {
@@ -54,6 +56,19 @@ Matrix viewport(int x, int y, int w, int h) {
     return m;
 }
 
+Matrix lookat(Vec3f eye, Vec3f center, Vec3f up) {
+    Vec3f z = (eye - center).normalize();
+    Vec3f x = (up ^ z).normalize();
+    Vec3f y = (z ^ x).normalize();
+    Matrix res = Matrix::identity(4);
+    for (int i = 0; i < 3; i++) {
+        res[0][i] = x.raw[i];
+        res[1][i] = y.raw[i];
+        res[2][i] = z.raw[i];
+        res[i][3] = -center.raw[i];
+    }
+    return res;
+}
 
 //void line(int x0, int y0, int x1, int y1, TGAImage &image, TGAColor color) {
 //    bool steep = false;
@@ -83,6 +98,7 @@ void triangle(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i uv0, Vec2i uv1, Vec2i uv2, TGA
     if (t0.y > t1.y) { std::swap(t0, t1); std::swap(uv0, uv1); }
     if (t0.y > t2.y) { std::swap(t0, t2); std::swap(uv0, uv2); }
     if (t1.y > t2.y) { std::swap(t1, t2); std::swap(uv1, uv2); }
+
     int total_height = t2.y - t0.y;
     for (int i = 0; i < total_height; i++) {
         bool second_half = i > t1.y - t0.y || t1.y == t0.y;
@@ -153,11 +169,12 @@ int main(int argc, char** argv) {
         zbuffer[i] = std::numeric_limits<int>::min();
     }
 
-
+    Matrix ModelView = lookat(eye, center, Vec3f(0, 1, 0));
     Matrix Projection = Matrix::identity(4);
     Matrix ViewPort = viewport(width / 8, height / 8, width * 3 / 4, height * 3 / 4);
     Projection[3][2] = -1.f / camera.GetPosition().z;
 
+    Matrix z = (ViewPort * Projection * ModelView);
 
     TGAImage image(width, height, TGAImage::RGB);
     for (int i = 0; i < model->nfaces(); i++) {
@@ -167,7 +184,7 @@ int main(int argc, char** argv) {
 
         for (int j = 0; j < 3; j++) {
             Vec3f v = model->vert(face[j]);
-            Vec3f sup = Matrix::mat2vec(ViewPort * Projection * Matrix::vec2mat(v));
+            Vec3f sup = Matrix::mat2vec(ViewPort * Projection * ModelView * Matrix::vec2mat(v));
             screen_coords[j] = Vec3i(sup.x, sup.y, sup.z); //Vec3i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2., (v.z + 1.) * depth / 2.);
             world_coords[j] = v;
         }
