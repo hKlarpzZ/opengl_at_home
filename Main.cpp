@@ -39,7 +39,7 @@ const int depth = 255;
 int* zbuffer = NULL;
 
 Vec3f light_dir(0, 0, -1);
-Camera camera(Vec3f(0, 0, 3));
+Camera camera(Vec3f(0, 0, 300));
 
 
 Matrix viewport(int x, int y, int w, int h) {
@@ -122,9 +122,15 @@ void triangle(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i uv0, Vec2i uv1, Vec2i uv2, TGA
             Vec2i uvP(uvPshit.x, uvPshit.y);
 
             int idx = P.x + P.y * width;
+            
+            if (idx >= height*width or idx < 0)
+            {
+                continue;
+            }
+
             if (zbuffer[idx] < P.z) {
                 zbuffer[idx] = P.z;
-                TGAColor color = model->diffuse(uvP);
+                TGAColor color = 0 ? TGAColor(255, 0, 0, 1) : model->diffuse(uvP);
                 image.set(P.x, P.y, TGAColor(color.r * intensity, color.g * intensity, color.b * intensity, 1));
             }
         }
