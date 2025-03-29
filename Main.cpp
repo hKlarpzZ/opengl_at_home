@@ -39,7 +39,7 @@ const int depth = 255;
 int* zbuffer = NULL;
 
 Vec3f light_dir(0, 0, -1);
-Camera camera(Vec3f(0, 0, 300));
+Camera camera(Vec3f(0, 0, 3));
 
 
 Matrix viewport(int x, int y, int w, int h) {
@@ -118,7 +118,9 @@ void triangle(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i uv0, Vec2i uv1, Vec2i uv2, TGA
             Vec3f Pshit = Vec3f(A.x, A.y, A.z) + Vec3f((B.x - A.x), (B.y - A.y), (B.z - A.z)) * phi; //Pshit = A + B * phi; 
             Vec3i P(Pshit.x, Pshit.y, Pshit.z);
 
-            Vec2f uvPshit = Vec2f(uvA.x, uvA.y) + Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi;
+            Vec2f uvPshit = 0\
+                ? Vec2f(uvB.x, uvB.y) - Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi : Vec2f(uvA.x, uvA.y) + Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi;\
+                //((t2.x < t0.x || t2.x < t1.x) && second_half) || ((t2.x > t0.x || t2.x > t1.x) && !second_half)
             Vec2i uvP(uvPshit.x, uvPshit.y);
 
             int idx = P.x + P.y * width;
