@@ -93,75 +93,74 @@ Matrix lookat(Vec3f eye, Vec3f center, Vec3f up) {
 //    }
 //}
 
+inline Vec3f cross(const Vec3f& a, const Vec3f& b) {
+    return Vec3f(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    );
+}
+
+Vec3f barycentric(Vec2i A, Vec2i B, Vec2i C, Vec2i P) {
+    Vec3f s[2];
+    for (int i = 2; i--; ) {
+        s[i].raw[0] = C.raw[i] - A.raw[i];
+        s[i].raw[1] = B.raw[i] - A.raw[i];
+        s[i].raw[2] = A.raw[i] - P.raw[i];
+    }
+    Vec3f u = cross(s[0], s[1]);
+    if (std::abs(u.raw[2]) < 1e-2) return Vec3f(-1, 1, 1);
+    return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+}
+
 void triangle(Vec3i t0, Vec3i t1, Vec3i t2, Vec2i uv0, Vec2i uv1, Vec2i uv2, TGAImage& image, float intensity, int* zbuffer) {
-    if (t0.y == t1.y && t0.y == t2.y) return; // i dont care about degenerate triangles
-    if (t0.y > t1.y) { std::swap(t0, t1); std::swap(uv0, uv1); }
-    if (t0.y > t2.y) { std::swap(t0, t2); std::swap(uv0, uv2); }
-    if (t1.y > t2.y) { std::swap(t1, t2); std::swap(uv1, uv2); }
+    // Находим ограничивающий прямоугольник
+    Vec2i bboxmin(image.get_width() - 1, image.get_height() - 1);
+    Vec2i bboxmax(0, 0);
+    Vec2i clamp(image.get_width() - 1, image.get_height() - 1);
 
-    int total_height = t2.y - t0.y;
-    for (int i = 0; i < total_height; i++) {
-        bool second_half = i > t1.y - t0.y || t1.y == t0.y;
-        int segment_height = second_half ? t2.y - t1.y : t1.y - t0.y;
-        float alpha = (float)i / total_height;
-        float beta = (float)(i - (second_half ? t1.y - t0.y : 0)) / segment_height; // be careful: with above conditions no division by zero here
-        
-        /*Vec3f DA((float)(t2.x - t0.x) * alpha, (float)(t2.y - t0.y) * alpha, (float)(t2.z - t0.z) * alpha);
-        Vec3i A = t0 + Vec3i(DA.x, DA.y, DA.z);
+    Vec2i pts[3] = { Vec2i(t0.x, t0.y), Vec2i(t1.x, t1.y), Vec2i(t2.x, t2.y) };
 
-        Vec3f DB;
-        if (second_half)
-        {
-            DB = Vec3f((float)(t2.x - t1.x) * beta, (float)(t2.y - t1.y) * beta, (float)(t2.z - t1.z) * beta);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 2; j++) {
+            bboxmin.raw[j] = std::max(0, std::min(bboxmin.raw[j], pts[i].raw[j]));
+            bboxmax.raw[j] = std::min(clamp.raw[j], std::max(bboxmax.raw[j], pts[i].raw[j]));
         }
-        else
-        {
-            DB = Vec3f((float)(t1.x - t0.x) * beta, (float)(t1.y - t0.y) * beta, (float)(t1.z - t0.z) * beta);
-        }
-        Vec3i DBi(DB.x, DB.y, DB.z);
-        Vec3i B = second_half ? t1 + DBi : t0 + DBi;*/
+    }
 
-        Vec3f A = Vec3f(t0.x, t0.y, t0.z) + Vec3f((t2 - t0).x, (t2 - t0).y, (t2 - t0).z) * alpha;
-        Vec3f B = second_half ? Vec3f(t1.x, t1.y, t1.z) + Vec3f((t2 - t1).x, (t2 - t1).y, (t2 - t1).z) * beta : Vec3f(t0.x, t0.y, t0.z) + Vec3f((t1 - t0).x, (t1 - t0).y, (t1 - t0).z) * beta;
+    // Перебираем все пиксели в ограничивающем прямоугольнике
+    Vec2i P;
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++) {
+            Vec3f bc = barycentric(pts[0], pts[1], pts[2], P);
+            if (bc.x < 0 || bc.y < 0 || bc.z < 0) continue;
 
-        Vec2f uvA = Vec2f(uv0.x, uv0.y) + Vec2f((uv2.x - uv0.x), (uv2.y - uv0.y)) * alpha;
-        Vec2f uvB = second_half ? Vec2f(uv1.x, uv1.y) + Vec2f((uv2.x - uv1.x), (uv2.y - uv1.y)) * beta : Vec2f(uv0.x, uv0.y) + Vec2f((uv1.x - uv0.x), (uv1.y - uv0.y)) * beta;
+            // Интерполяция глубины
+            float z = t0.z * bc.x + t1.z * bc.y + t2.z * bc.z;
 
-        if (A.x > B.x) std::swap(A, B);
-        for (int j = A.x; j <= B.x; j++) {
-            float phi = B.x == A.x ? 1. : (float)(j - A.x) / (float)(B.x - A.x);
+            int idx = P.x + P.y * image.get_width();
+            if (zbuffer[idx] < z) {
+                zbuffer[idx] = z;
 
-            Vec3f Pshit = Vec3f(A.x, A.y, A.z) + Vec3f((B.x - A.x), (B.y - A.y), (B.z - A.z)) * phi; //Pshit = A + B * phi; 
-            Vec3i P(Pshit.x, Pshit.y, Pshit.z);
+                // Интерполяция UV-координат
+                float u = uv0.x * bc.x + uv1.x * bc.y + uv2.x * bc.z;
+                float v = uv0.y * bc.x + uv1.y * bc.y + uv2.y * bc.z;
 
-            Vec2f uvPshit = 0\
-                ? Vec2f(uvB.x, uvB.y) - Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi : Vec2f(uvA.x, uvA.y) + Vec2f((uvB.x - uvA.x), (uvB.y - uvA.y)) * phi;\
-                //((t2.x < t0.x || t2.x < t1.x) && second_half) || ((t2.x > t0.x || t2.x > t1.x) && !second_half)
-            Vec2i uvP(uvPshit.x, uvPshit.y);
-
-            int idx = P.x + P.y * width;
-            
-            if (idx >= height*width or idx < 0)
-            {
-                continue;
-            }
-
-            if (zbuffer[idx] < P.z) {
-                zbuffer[idx] = P.z;
-                TGAColor color = 0 ? TGAColor(255, 0, 0, 1) : model->diffuse(uvP);
-                image.set(P.x, P.y, TGAColor(color.r * intensity, color.g * intensity, color.b * intensity, 1));
+                TGAColor color = model->diffuse(Vec2i(u, v));
+                color.r *= intensity;
+                color.g *= intensity;
+                color.b *= intensity;
+                image.set(P.x, P.y, color);
             }
         }
     }
 }
 
-
-
 int main(int argc, char** argv) {
     if (2==argc) {
         model = new Model(argv[1]);
     } else {
-        model = new Model("obj/african_head.obj");
+        model = new Model("obj/cat.obj");
     }
 
     zbuffer = new int[width * height];
@@ -184,8 +183,9 @@ int main(int argc, char** argv) {
 
         for (int j = 0; j < 3; j++) {
             Vec3f v = model->vert(face[j]);
-            Vec3f sup = Matrix::mat2vec(ViewPort * Projection * ModelView * Matrix::vec2mat(v));
-            screen_coords[j] = Vec3i(sup.x, sup.y, sup.z); //Vec3i((v.x + 1.) * width / 2., (v.y + 1.) * height / 2., (v.z + 1.) * depth / 2.);
+            Matrix gl_Vertex = ViewPort * Projection * ModelView * Matrix::vec2mat(v);
+            Vec3f vert_screen_coords = Matrix::mat2vec(gl_Vertex);
+            screen_coords[j] = Vec3i(vert_screen_coords.x, vert_screen_coords.y, vert_screen_coords.z);
             world_coords[j] = v;
         }
 
