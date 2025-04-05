@@ -75,21 +75,34 @@ struct IShader {
 
 struct GouraudShader : public IShader {
 	Vec3f varying_intensity; // written by vertex shader, read by fragment shader
-	Vec2i varying_uv[3];
+	
+	Vec2i varying_uv[3]; // triangle uv coordinates, written by the vertex shader, read by the fragment shader
+	Vec3f varying_tri[3]; // triangle coordinates (clip space), written by VS, read by FS
 
 	Vec3f vertex(int iface, int ivertex) override {
 		// get diffuse lighting intensity
 		varying_intensity.raw[ivertex] = std::max(0.f, model->normal(iface, ivertex) * camera->light_dir); //ambient occlusion?
-		//varying_uv[ivertex] = model->uv(iface, ivertex);
-		// read the vertex from .obj file
-		Vec3f gl_Vertex = model->vert(model->face(iface)[ivertex]);
-		// transform it to screen coordinates
-		return Matrix::mat2vec(camera->ViewPort * camera->Projection * camera->ModelView * Matrix::vec2mat(gl_Vertex));
+		varying_uv[ivertex] = model->uv(iface, ivertex);
+		// read the vertex from .obj file and transform it to screen coordinates
+		Vec3f gl_Vertex = Matrix::mat2vec(camera->ViewPort * camera->Projection * camera->ModelView * Matrix::vec2mat(model->vert(model->face(iface)[ivertex])));
+		
+		varying_tri[ivertex] = gl_Vertex;
+
+		return gl_Vertex;
 	}
 	bool fragment(Vec3f bar, TGAColor& color) override {
 		// interpolate intensity for the current pixel
+		Vec2f uv;
+		uv.x = varying_uv[0].x * bar.x + varying_uv[1].x * bar.y + varying_uv[2].x * bar.z;
+		uv.y = varying_uv[0].y * bar.x + varying_uv[1].y * bar.y + varying_uv[2].y * bar.z;
+		Vec2i uv_int(uv.x, uv.y);
+		color = model->diffuse(uv_int);
+
 		float intensity = varying_intensity * bar;
-		color = TGAColor(255 * intensity, 255 * intensity, 255 * intensity, 255);
+		color.r *= intensity;
+		color.g *= intensity;
+		color.b *= intensity;
+
 		return false; // no, we do not discard this pixel
 	}
 };
@@ -143,11 +156,6 @@ void triangle(Vec3f ScreenCords[3], IShader& shader, TGAImage& image, int* zbuff
 			if (zbuffer[idx] < z) {
 				zbuffer[idx] = z;
 
-				// »нтерпол€ци€ UV-координат
-				/*float u = uv0.x * bc.x + uv1.x * bc.y + uv2.x * bc.z;
-				float v = uv0.y * bc.x + uv1.y * bc.y + uv2.y * bc.z;*/
-
-				//TGAColor color = model->diffuse(Vec2i(u, v));
 				TGAColor color(255, 255, 255, 255);
 				shader.fragment(bc, color);
 				image.set(P.x, P.y, color);
@@ -174,20 +182,21 @@ int main(int argc, char** argv) {
 
 	TGAImage image(width, height, TGAImage::RGB);
 
-	std::cout << "Total faces" << model->nfaces() << std::endl;
+	//std::cout << "Total faces " << model->nfaces() << std::endl;
 
 	GouraudShader shader;
 	for (int iface = 0; iface < model->nfaces(); iface++) {
-		std::cout << "[F] Found face with id [" << iface << "] and data " << model->face(iface)[0] << " " << model->face(iface)[1] << " " << model->face(iface)[2] << ":" << std::endl;
-		Vec3f screen_coords[3];
+		//std::cout << "[F] Found face with id [" << iface << "] and data " << model->face(iface)[0] << " " << model->face(iface)[1] << " " << model->face(iface)[2] << ":" << std::endl;
+		//Vec3f screen_coords[3];
 		for (int ivertex = 0; ivertex < 3; ivertex++) {
-			screen_coords[ivertex] = shader.vertex(iface, ivertex);
-			std::cout << " - Got vertex (" << model->vert(ivertex).x << ", " << model->vert(ivertex).y << ", "\
+			//screen_coords[ivertex] = shader.vertex(iface, ivertex);
+			shader.vertex(iface, ivertex);
+			/*std::cout << " - Got vertex (" << model->vert(ivertex).x << ", " << model->vert(ivertex).y << ", "\
 				<< model->vert(ivertex).z << ") to screen coords:" << std::endl;
-			std::cout << "   [V] (" << screen_coords[ivertex].x << ", " << screen_coords[ivertex].y << ", " << screen_coords[ivertex].z << ")" << std::endl;
+			std::cout << "   [V] (" << screen_coords[ivertex].x << ", " << screen_coords[ivertex].y << ", " << screen_coords[ivertex].z << ")" << std::endl;*/
 		}
-		std::cout << std::endl;
-		triangle(screen_coords, shader, image, zbuffer);
+		//std::cout << std::endl;
+		triangle(shader.varying_tri, shader, image, zbuffer);
 	}
 
 	image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
