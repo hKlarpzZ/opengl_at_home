@@ -127,6 +127,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="main-new.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="model.cpp" />
     <ClCompile Include="newmain.cpp" />
@@ -137,6 +138,7 @@
     <ClInclude Include="custommath.h" />
     <ClInclude Include="geometry.h" />
     <ClInclude Include="model.h" />
+    <ClInclude Include="Shading.h" />
     <ClInclude Include="tgaimage.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

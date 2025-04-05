@@ -19,6 +19,7 @@ public:
 	int nverts();
 	int nfaces();
 	Vec3f vert(int i);
+	Vec3f normal(int iface, int ivertex);
 	Vec2i uv(int iface, int nvert);
 	TGAColor diffuse(Vec2i uv);
 	std::vector<int> face(int idx);
