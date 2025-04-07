@@ -107,6 +107,51 @@ struct GouraudShader : public IShader {
 	}
 };
 
+struct PhongShader : public IShader {
+	Vec3f varying_intensity; // written by vertex shader, read by fragment shader
+
+	Vec2i varying_uv[3]; // triangle uv coordinates, written by the vertex shader, read by the fragment shader
+	Vec3f varying_tri[3]; // triangle coordinates (clip space), written by VS, read by FS
+
+	Vec3f varying_spec;
+	Vec3f varying_diffuse;
+
+	Vec3f vertex(int iface, int ivertex) override {
+		// get diffuse lighting intensity
+		varying_intensity.raw[ivertex] = std::max(0.f, model->normal(iface, ivertex) * camera->light_dir); //ambient occlusion?
+		Vec3f normal_vec = model->normal(iface, ivertex);
+		Vec3f reflection_vec = Vec3f(2 * (normal_vec * camera->light_dir) * normal_vec.x - camera->light_dir.x,\
+			2 * (normal_vec * camera->light_dir) * normal_vec.y - camera->light_dir.y,\
+			2 * (normal_vec * camera->light_dir) * normal_vec.z - camera->light_dir.z);
+		varying_spec.raw[ivertex] = std::max(0.f, reflection_vec * Vec3f(camera->position - model->vert(ivertex)).normalize());
+		varying_diffuse.raw[ivertex] = std::max(0.f, normal_vec * camera->light_dir);
+		varying_uv[ivertex] = model->uv(iface, ivertex);
+		// read the vertex from .obj file and transform it to screen coordinates
+		Vec3f gl_Vertex = Matrix::mat2vec(camera->ViewPort * camera->Projection * camera->ModelView * Matrix::vec2mat(model->vert(model->face(iface)[ivertex])));
+
+		varying_tri[ivertex] = gl_Vertex;
+
+		return gl_Vertex;
+	}
+	bool fragment(Vec3f bar, TGAColor& color) override {
+		// interpolate intensity for the current pixel
+		Vec2f uv;
+		uv.x = varying_uv[0].x * bar.x + varying_uv[1].x * bar.y + varying_uv[2].x * bar.z;
+		uv.y = varying_uv[0].y * bar.x + varying_uv[1].y * bar.y + varying_uv[2].y * bar.z;
+		Vec2i uv_int(uv.x, uv.y);
+		color = model->diffuse(uv_int);
+
+		//float intensity = varying_intensity * bar;
+		float specular = varying_spec * bar;
+		float diffuse = varying_diffuse * bar;
+		color.r *= diffuse + specular * .5 + diffuse * .01;
+		color.g *= diffuse + specular * .5 + diffuse * .01;
+		color.b *= diffuse + specular * .5 + diffuse * .01;
+
+		return false; // no, we do not discard this pixel
+	}
+};
+
 inline Vec3f cross(const Vec3f& a, const Vec3f& b) {
 	return Vec3f(
 		a.y * b.z - a.z * b.y,
@@ -184,7 +229,8 @@ int main(int argc, char** argv) {
 
 	//std::cout << "Total faces " << model->nfaces() << std::endl;
 
-	GouraudShader shader;
+	PhongShader shader;
+	//GouraudShader shader;
 	for (int iface = 0; iface < model->nfaces(); iface++) {
 		//std::cout << "[F] Found face with id [" << iface << "] and data " << model->face(iface)[0] << " " << model->face(iface)[1] << " " << model->face(iface)[2] << ":" << std::endl;
 		//Vec3f screen_coords[3];
