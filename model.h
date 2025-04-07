@@ -12,6 +12,7 @@ private:
 	std::vector<Vec3f> norms_;
 	std::vector<Vec2f> uv_;
 	TGAImage diffusemap_;
+	TGAImage specmap_;
 	void load_texture(std::string filename, const char* suffix, TGAImage& img);
 public:
 	Model(const char* filename);
@@ -22,6 +23,7 @@ public:
 	Vec3f normal(int iface, int ivertex);
 	Vec2i uv(int iface, int nvert);
 	TGAColor diffuse(Vec2i uv);
+	float spec(Vec2i uv);
 	std::vector<int> face(int idx);
 };
 

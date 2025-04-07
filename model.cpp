@@ -4,6 +4,7 @@
 #include <sstream>
 #include <vector>
 #include "model.h"
+#include <iostream>
 
 Model::Model(const char* filename) : verts_(), faces_(), norms_(), uv_() {
     std::ifstream in;
@@ -45,6 +46,7 @@ Model::Model(const char* filename) : verts_(), faces_(), norms_(), uv_() {
     }
     std::cerr << "# v# " << verts_.size() << " f# " << faces_.size() << " vt# " << uv_.size() << " vn# " << norms_.size() << std::endl;
     load_texture(filename, "_diffuse.tga", diffusemap_);
+    load_texture(filename, "_spec.tga", specmap_);
 }
 
 Model::~Model() {
@@ -84,6 +86,11 @@ void Model::load_texture(std::string filename, const char* suffix, TGAImage& img
 
 TGAColor Model::diffuse(Vec2i uv) {
     return diffusemap_.get(uv.x, uv.y);
+}
+
+float Model::spec(Vec2i uv)
+{
+    return std::min(1.f, (float)specmap_.get(uv.x, uv.y).val);
 }
 
 Vec2i Model::uv(int iface, int nvert) {

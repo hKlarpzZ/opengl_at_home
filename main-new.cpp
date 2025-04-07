@@ -53,7 +53,7 @@ public:
 
 	Camera() {
 		this->position = Vec3f(0, 0, 3);
-		this->light_dir = Vec3f(0, 0, 1);
+		this->light_dir = Vec3f(0, 2, 1).normalize();
 		this->eye = Vec3f(1, 1, 3);
 		this->center = Vec3f(0, 0, 0);
 
@@ -119,10 +119,10 @@ struct PhongShader : public IShader {
 	Vec3f vertex(int iface, int ivertex) override {
 		// get diffuse lighting intensity
 		varying_intensity.raw[ivertex] = std::max(0.f, model->normal(iface, ivertex) * camera->light_dir); //ambient occlusion?
-		Vec3f normal_vec = model->normal(iface, ivertex);
+		Vec3f normal_vec = model->normal(iface, ivertex).normalize();
 		Vec3f reflection_vec = Vec3f(2 * (normal_vec * camera->light_dir) * normal_vec.x - camera->light_dir.x,\
 			2 * (normal_vec * camera->light_dir) * normal_vec.y - camera->light_dir.y,\
-			2 * (normal_vec * camera->light_dir) * normal_vec.z - camera->light_dir.z);
+			2 * (normal_vec * camera->light_dir) * normal_vec.z - camera->light_dir.z).normalize();
 		varying_spec.raw[ivertex] = std::max(0.f, reflection_vec * Vec3f(camera->position - model->vert(ivertex)).normalize());
 		varying_diffuse.raw[ivertex] = std::max(0.f, normal_vec * camera->light_dir);
 		varying_uv[ivertex] = model->uv(iface, ivertex);
@@ -139,14 +139,16 @@ struct PhongShader : public IShader {
 		uv.x = varying_uv[0].x * bar.x + varying_uv[1].x * bar.y + varying_uv[2].x * bar.z;
 		uv.y = varying_uv[0].y * bar.x + varying_uv[1].y * bar.y + varying_uv[2].y * bar.z;
 		Vec2i uv_int(uv.x, uv.y);
-		color = model->diffuse(uv_int);
+		color = model->diffuse(uv_int);/*
+		float color_koeff = model->spec(uv_int);
+		std::cout << color_koeff << std::endl;*/
 
 		//float intensity = varying_intensity * bar;
-		float specular = varying_spec * bar;
+		float specular = varying_spec * bar * model->spec(uv_int);
 		float diffuse = varying_diffuse * bar;
-		color.r *= diffuse + specular * .5 + diffuse * .01;
-		color.g *= diffuse + specular * .5 + diffuse * .01;
-		color.b *= diffuse + specular * .5 + diffuse * .01;
+		color.r *= std::min(1.f, diffuse + specular + diffuse * .01f);
+		color.g *= std::min(1.f, diffuse + specular + diffuse * .01f);
+		color.b *= std::min(1.f, diffuse + specular + diffuse * .01f);
 
 		return false; // no, we do not discard this pixel
 	}
