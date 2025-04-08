@@ -53,8 +53,8 @@ public:
 
 	Camera() {
 		this->position = Vec3f(0, 0, 3);
-		this->light_dir = Vec3f(0, 2, 1).normalize();
-		this->eye = Vec3f(1, 1, 3);
+		this->light_dir = Vec3f(1, 0, 1).normalize() * 2.f;
+		this->eye = Vec3f(1, 0, 3);
 		this->center = Vec3f(0, 0, 0);
 
 		this->ModelView = lookat(eye, center, Vec3f(0, 1, 0));
@@ -202,6 +202,7 @@ void triangle(Vec3f ScreenCords[3], IShader& shader, TGAImage& image, int* zbuff
 			int idx = P.x + P.y * image.get_width();
 			if (zbuffer[idx] < z) {
 				zbuffer[idx] = z;
+				
 
 				TGAColor color(255, 255, 255, 255);
 				shader.fragment(bc, color);
@@ -210,6 +211,36 @@ void triangle(Vec3f ScreenCords[3], IShader& shader, TGAImage& image, int* zbuff
 		}
 	}
 }
+
+Vec3f Tri_verts[4];
+Vec3i Faces[2];
+TGAImage* image_ref;
+TGAImage* zbuffer_image_ref;
+
+struct TumanShader : public IShader {
+	Vec3f varying_tri[3];
+
+	Vec3f vertex(int iface, int ivertex) override {
+		Vec3f gl_vertex = Matrix::mat2vec(camera->ViewPort * Matrix::vec2mat(Tri_verts[Faces[iface].raw[ivertex]]));
+		varying_tri[ivertex] = gl_vertex;
+
+		return gl_vertex;
+	}
+
+	bool fragment(Vec3f bar, TGAColor& color) override {
+		Vec2f uv;
+		uv.x = varying_tri[0].x * bar.x + varying_tri[1].x * bar.y + varying_tri[2].x * bar.z;
+		uv.y = varying_tri[0].y * bar.x + varying_tri[1].y * bar.y + varying_tri[2].y * bar.z;
+		Vec2i uv_int(uv.x, uv.y);
+		
+		color = image_ref->get(uv_int.x, uv_int.y);
+		TGAColor k = zbuffer_image_ref->get(uv_int.x, uv_int.y);
+		color.r += std::min(k.r * .7f, 255.f - color.r);
+		color.g += std::min(k.g * .7f, 255.f - color.g);
+		color.b += std::min(k.b * .7f, 255.f - color.b);
+		return false;
+	}
+};
 
 
 int main(int argc, char** argv) {
@@ -222,7 +253,7 @@ int main(int argc, char** argv) {
 
 	zbuffer = new int[width * height];
 	for (int i = 0; i < width * height; i++) {
-		zbuffer[i] = std::numeric_limits<int>::min();
+		zbuffer[i] = std::numeric_limits<int>::min(); // std::numeric_limits<int>::min()
 	}
 
 	camera = new Camera();
@@ -254,13 +285,43 @@ int main(int argc, char** argv) {
 	TGAImage zbuffer_image(width, height, TGAImage::RGB);
 	for (int i = 0; i < width * height; i++)
 	{
-		int a = zbuffer[i] == std::numeric_limits<int>::min() ? 0 : zbuffer[i];
+		int a = zbuffer[i] == std::numeric_limits<int>::min() ? 1 : zbuffer[i];
 		zbuffer_image.set(i % width, i / width, TGAColor(255 * a, 255 * a, 255 * a, 255));
 	}
 
 	zbuffer_image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
 	zbuffer_image.write_tga_file("zbuffer_image_output.tga");
 
+
+	zbuffer_image.flip_vertically();
+	image.flip_vertically();
+	image_ref = &image;
+	zbuffer_image_ref = &zbuffer_image;
+
+	for (int i = 0; i < width * height; i++) {
+		zbuffer[i] = 0; // std::numeric_limits<int>::min()
+	}
+
+	Tri_verts[0] = Vec3f(-width / 2, -height / 2, 0.f);
+	Tri_verts[1] = Vec3f(width / 2, -height / 2, 0.f);
+	Tri_verts[2] = Vec3f(-width / 2, height / 2, 0.f);
+	Tri_verts[3] = Vec3f(width / 2, height / 2, 0.f);
+
+	Faces[0] = Vec3i(0, 1, 3);
+	Faces[1] = Vec3i(0, 2, 3);
+
+	TumanShader tuman_shader;
+	TGAImage tuman_image(width, height, TGAImage::RGB);
+	for (int iface = 0; iface < 2; iface++)
+	{
+		for (int ivertex = 0; ivertex < 3; ivertex++) {
+			tuman_shader.vertex(iface, ivertex);
+		}
+		triangle(tuman_shader.varying_tri, tuman_shader, tuman_image, zbuffer);
+	}
+
+	tuman_image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+	tuman_image.write_tga_file("tuman_image.tga");
 
 	delete model;
 	delete camera;
